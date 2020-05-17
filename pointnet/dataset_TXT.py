@@ -206,6 +206,8 @@ class ModelNetDataset(data.Dataset):
         return len(self.fns)
 
 if __name__ == '__main__':
+    # import time
+    # start = time.clock()
     dataset ='modelnet' #sys.argv[1]
     datapath = 'D:\wangke\shenlan\Point Cloud Processing\Charter5\pointnet.pytorch-master\modelnet40_normal_resampled_txt'#sys.argv[2]
 
@@ -228,3 +230,5 @@ if __name__ == '__main__':
         print(len(d))
         print(d[0])
         print('*'*100)
+    # elapsed = (time.clock() - start)
+    # print("Time used:",elapsed)

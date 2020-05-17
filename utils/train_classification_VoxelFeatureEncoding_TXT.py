@@ -12,17 +12,18 @@ from pointnet.model_VFE_TXT import PointNetCls, feature_transform_regularizer,Vo
 import torch.nn.functional as F
 from tqdm import tqdm
 from tensorboardX import SummaryWriter
-writer = SummaryWriter('logs')
+writer = SummaryWriter('logs_vfe')
+from apex import amp
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
-    '--batchSize', type=int, default=16, help='input batch size 32')
+    '--batchSize', type=int, default=32, help='input batch size 32')
 parser.add_argument(
     '--num_points', type=int, default=1024, help='input batch size 2500')
 # parser.add_argument(
 #     '--workers', type=int, help='number of data loading workers', default=1)
 parser.add_argument(
-    '--nepoch', type=int, default=3, help='number of epochs to train for 250')
+    '--nepoch', type=int, default=50, help='number of epochs to train for 250')
 parser.add_argument('--outf', type=str, default='cls_vfe_txt', help='output folder')
 # parser.add_argument('--model', type=str, default='', help='model path')
 parser.add_argument('--dataset', type=str, default='D:\wangke\shenlan\Point Cloud Processing\Charter5\pointnet.pytorch-master\modelnet40_normal_resampled_txt', help="dataset path")#required=True
@@ -97,15 +98,17 @@ classifier = VoxelFeatureEncoding(k=num_classes)#, feature_transform=opt.feature
 optimizer = optim.Adam(classifier.parameters(), lr=0.001, betas=(0.9, 0.999))
 scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=20, gamma=0.5)
 classifier.cuda()
-
 num_batch = len(dataset) / opt.batchSize
+'''半精度训练'''
+classifier, optimizer = amp.initialize(classifier, optimizer, opt_level="O1") # 这里是“欧一”，不是“零一”
+
 '''断点续训'''
-path = "./cls_vfe_txt/cls_model_199.pth"#断点路径
-checkpoint = torch.load(path)#加载断点
-classifier.load_state_dict(checkpoint['model'])
-optimizer.load_state_dict(checkpoint['optimizer'])
-start_epoch = checkpoint['epoch']+1
-# start_epoch=0
+# path = "./cls_vfe_txt/cls_model_199.pth"#断点路径
+# checkpoint = torch.load(path)#加载断点
+# classifier.load_state_dict(checkpoint['model'])
+# optimizer.load_state_dict(checkpoint['optimizer'])
+# start_epoch = checkpoint['epoch']+1
+start_epoch=0
 
 for epoch in range(opt.nepoch):
     scheduler.step()
@@ -121,11 +124,13 @@ for epoch in range(opt.nepoch):
         loss = F.nll_loss(pred, target)
         # if opt.feature_transform:
         #     loss += feature_transform_regularizer(trans_feat) * 0.001
-        loss.backward()
+        # loss.backward()
+        with amp.scale_loss(loss, optimizer) as scaled_loss:
+            scaled_loss.backward()
         optimizer.step()
         pred_choice = pred.data.max(1)[1]
         correct = pred_choice.eq(target.data).cpu().sum()
-        print('[%d: %d/%d] train loss: %f accuracy: %f' % (epoch+start_epoch, i, num_batch, loss.item(), correct.item() / float(opt.batchSize)))
+        # print('[%d: %d/%d] train loss: %f accuracy: %f' % (epoch+start_epoch, i, num_batch, loss.item(), correct.item() / float(opt.batchSize)))
         writer.add_scalar('Train/Loss', loss.item(), epoch + start_epoch)
         writer.add_scalar('Train/Acc', correct.item() / float(opt.batchSize), epoch + start_epoch)
         if i % 100 == 0:
